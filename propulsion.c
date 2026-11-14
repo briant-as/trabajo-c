@@ -1,19 +1,4 @@
-/*
- * propulsion.c
- * Integrante 2 - Fase 2: desde el desprendimiento de los SRB hasta el
- * apagado de los motores a la altura h.
- *
- * Modelo fisico: MRUV con aceleracion neta constante a2 (ya es aceleracion
- * neta del movimiento: NO se le vuelve a restar la gravedad).
- *
- *   dy  = h - y1
- *   v2  = sqrt(v1^2 + 2*a2*dy)
- *   dt2 = (v2 - v1) / a2
- *
- * Posicion y velocidad a un tiempo tau desde el desprendimiento (0 <= tau <= dt2):
- *   y(tau) = y1 + v1*tau + 0.5*a2*tau^2
- *   v(tau) = v1 + a2*tau
- */
+
 #include <math.h>
 #include <stdio.h>
 #include "propulsion.h"
@@ -21,16 +6,16 @@
 #include "validaciones.h"
 #include "vuelo_libre.h"
 
-/* Tolerancia para comparar tiempos con double */
+
 #define EPSILON 1e-9
 
-/* Cantidad de intervalos de duracion 'dt' necesarios para cubrir 'duracion' */
+
 static double cantidadPasos(double duracion, double dt)
 {
     return ceil(duracion / dt - EPSILON);
 }
 
-/* Estado al desprender los SRB, armado a partir de la fase 1 */
+
 static Estado estadoDesprendimiento(const Configuracion *config,
                                     const EstadoNave *nave)
 {
@@ -43,8 +28,7 @@ static Estado estadoDesprendimiento(const Configuracion *config,
     return e;
 }
 
-/* Verifica que los intervalos de las fases 2 y 3 entren en el historial.
- * Si no entran, explica que cambiar y devuelve 0. */
+
 static int entraEnHistorial(const Configuracion *config, const EstadoNave *nave,
                             int lugaresLibres)
 {
@@ -55,7 +39,7 @@ static int entraEnHistorial(const Configuracion *config, const EstadoNave *nave,
     calcularSegundaFase(config, &inicio, &res);
     tSubida = tiempoSubida(res.velocidadApagado, GRAVEDAD);
 
-    /* +1: margen para el ultimo intervalo ajustado de la fase 3 */
+   
     pasos = cantidadPasos(res.duracion, config->intervalo)
             + cantidadPasos(tSubida, config->intervalo) + 1;
     if (pasos <= lugaresLibres) {
@@ -105,8 +89,7 @@ int configurarSegundaFase(Configuracion *config, const EstadoNave *desprendimien
         }
     }
 
-    /* La altura de apagado debe superar la de desprendimiento: si no, la
-     * nave ya la habria pasado durante la fase 1. */
+
     snprintf(mensajeAltura, sizeof mensajeAltura,
              "Altura de apagado h (m, mayor que %.2f): ", desprendimiento->altura);
 
@@ -180,7 +163,7 @@ int simularPropulsion(const Configuracion *config, Estado *estado,
 {
     Estado inicio;
     Estado actual;
-    double tau;               /* tiempo desde el desprendimiento */
+    double tau;               
     double tauAnterior = 0.0;
     long paso = 0;
     int ultimo = 0;
@@ -191,10 +174,10 @@ int simularPropulsion(const Configuracion *config, Estado *estado,
         return 0;
     }
 
-    inicio = *estado;         /* copia: no perdemos los datos de partida */
+    inicio = *estado;         
     calcularSegundaFase(config, &inicio, res);
 
-    /* Control de limites: los intervalos deben entrar en el historial */
+   
     if (cantidadPasos(res->duracion, config->intervalo)
         > MAX_ESTADOS - hist->cantidad) {
         puts("No hay lugar en el historial para todos los intervalos de la fase 2.");
@@ -207,18 +190,17 @@ int simularPropulsion(const Configuracion *config, Estado *estado,
            "Tiempo [s]", "Altura [m]", "Vel. [m/s]", "Fase");
     puts("-----------+----------------+--------------+-------------------");
 
-    /* Fila inicial: el desprendimiento (ya registrado en la fase 1) */
+   
     actual = inicio;
     actual.fase = FASE_NUCLEO;
     imprimirFila(&actual, "<- desprendimiento SRB");
 
     while (!ultimo) {
         paso++;
-        /* tau = paso * intervalo en vez de sumar el intervalo en cada vuelta:
-         * asi no se acumula el error de redondeo de los double. */
+     
         tau = paso * config->intervalo;
 
-        /* Ajuste del ultimo intervalo: no pasarse de la altura de apagado */
+      
         if (tau >= res->duracion - EPSILON) {
             tau = res->duracion;
             ultimo = 1;
@@ -226,7 +208,7 @@ int simularPropulsion(const Configuracion *config, Estado *estado,
 
         actual.tiempo = inicio.tiempo + tau;
         if (ultimo) {
-            /* Valores exactos al apagado (sin error de redondeo) */
+           
             actual.altura = config->alturaApagado;
             actual.velocidad = res->velocidadApagado;
         } else {
@@ -243,11 +225,11 @@ int simularPropulsion(const Configuracion *config, Estado *estado,
             imprimirFila(&actual, ultimo ? "<- APAGADO" : "");
         }
 
-        agregarEstado(hist, actual);  /* hay lugar: se verifico antes */
+        agregarEstado(hist, actual);  
         tauAnterior = tau;
     }
 
-    *estado = actual;         /* se entrega el estado de apagado (fase 3) */
+    *estado = actual;       
     return 1;
 }
 
