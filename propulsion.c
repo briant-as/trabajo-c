@@ -1,149 +1,224 @@
 /*
  * propulsion.c
  * Integrante 2 - Fase 2: desde el desprendimiento de los SRB hasta el
- * apagado de motores a la altura h.
+ * apagado de los motores a la altura h.
  *
- * Modelo físico: MRUV con aceleración neta constante a2 (ya es aceleración
+ * Modelo fisico: MRUV con aceleracion neta constante a2 (ya es aceleracion
  * neta del movimiento: NO se le vuelve a restar la gravedad).
  *
- *   Δy  = h - y1
- *   v2  = sqrt(v1² + 2·a2·Δy)
- *   Δt2 = (v2 - v1) / a2
+ *   dy  = h - y1
+ *   v2  = sqrt(v1^2 + 2*a2*dy)
+ *   dt2 = (v2 - v1) / a2
  *
- * Posición y velocidad a un tiempo τ desde el desprendimiento (0 <= τ <= Δt2):
- *   y(τ) = y1 + v1·τ + ½·a2·τ²
- *   v(τ) = v1 + a2·τ
+ * Posicion y velocidad a un tiempo tau desde el desprendimiento (0 <= tau <= dt2):
+ *   y(tau) = y1 + v1*tau + 0.5*a2*tau^2
+ *   v(tau) = v1 + a2*tau
  */
-#include <stdio.h>
 #include <math.h>
-#include "simulador.h"
+#include <stdio.h>
+#include "propulsion.h"
+#include "reportes.h"
+#include "validaciones.h"
+#include "vuelo_libre.h"
 
 /* Tolerancia para comparar tiempos con double */
 #define EPSILON 1e-9
 
-const char *nombre_fase(Fase fase)
+/* Cantidad de intervalos de duracion 'dt' necesarios para cubrir 'duracion' */
+static double cantidadPasos(double duracion, double dt)
 {
-    switch (fase) {
-        case FASE_PLATAFORMA:        return "En plataforma";
-        case FASE_ASCENSO_SRB:       return "Ascenso con SRB";
-        case FASE_PROPULSION_NUCLEO: return "Propulsion nucleo";
-        case FASE_VUELO_LIBRE:       return "Vuelo sin propulsion";
-        case FASE_ALTURA_MAXIMA:     return "Altura maxima";
-        default:                     return "Desconocida";
+    return ceil(duracion / dt - EPSILON);
+}
+
+/* Estado al desprender los SRB, armado a partir de la fase 1 */
+static Estado estadoDesprendimiento(const Configuracion *config,
+                                    const EstadoNave *nave)
+{
+    Estado e;
+
+    e.tiempo = config->tiempo;
+    e.altura = nave->altura;
+    e.velocidad = nave->velocidad;
+    e.fase = FASE_NUCLEO;
+    return e;
+}
+
+/* Verifica que los intervalos de las fases 2 y 3 entren en el historial.
+ * Si no entran, explica que cambiar y devuelve 0. */
+static int entraEnHistorial(const Configuracion *config, const EstadoNave *nave,
+                            int lugaresLibres)
+{
+    Estado inicio = estadoDesprendimiento(config, nave);
+    ResultadoFase2 res;
+    double tSubida, pasos, intervaloMinimo;
+
+    calcularSegundaFase(config, &inicio, &res);
+    tSubida = tiempoSubida(res.velocidadApagado, GRAVEDAD);
+
+    /* +1: margen para el ultimo intervalo ajustado de la fase 3 */
+    pasos = cantidadPasos(res.duracion, config->intervalo)
+            + cantidadPasos(tSubida, config->intervalo) + 1;
+    if (pasos <= lugaresLibres) {
+        return 1;
+    }
+
+    printf("Con un intervalo de %.2f s la mision necesita %.0f estados y el "
+           "historial admite %d.\n", config->intervalo, pasos, lugaresLibres);
+    intervaloMinimo = ceil((res.duracion + tSubida) / (lugaresLibres - 3) * 100.0)
+                      / 100.0;
+    if (intervaloMinimo <= INTERVALO_MAX) {
+        printf("Use un intervalo de al menos %.2f s.\n", intervaloMinimo);
+    } else {
+        puts("Reduzca la altura de apagado o la aceleracion de la fase 2.");
+    }
+    return 0;
+}
+
+int configurarSegundaFase(Configuracion *config, const EstadoNave *desprendimiento,
+                          int lugaresLibres)
+{
+    int opcion;
+    char mensajeAltura[96];
+
+    puts("\n--- CONFIGURACION DE LA SEGUNDA FASE ---");
+    printf("1. Usar valores originales: a2 = %.1f m/s^2; h = %.1f m; "
+           "intervalo = %.1f s\n", ACELERACION2_ORIGINAL,
+           ALTURA_APAGADO_ORIGINAL, INTERVALO_ORIGINAL);
+    puts("2. Ingresar otros valores");
+
+    if (!leerEntero("Seleccione una opcion: ", 1, 2, &opcion)) {
+        return 0;
+    }
+
+    if (opcion == 1) {
+        config->aceleracion2 = ACELERACION2_ORIGINAL;
+        config->alturaApagado = ALTURA_APAGADO_ORIGINAL;
+        config->intervalo = INTERVALO_ORIGINAL;
+
+        if (config->alturaApagado <= desprendimiento->altura) {
+            printf("La altura de apagado original (%.2f m) no supera la altura "
+                   "de desprendimiento (%.2f m).\nIngrese los valores de la "
+                   "segunda fase.\n", config->alturaApagado,
+                   desprendimiento->altura);
+        } else if (entraEnHistorial(config, desprendimiento, lugaresLibres)) {
+            return 1;
+        }
+    }
+
+    /* La altura de apagado debe superar la de desprendimiento: si no, la
+     * nave ya la habria pasado durante la fase 1. */
+    snprintf(mensajeAltura, sizeof mensajeAltura,
+             "Altura de apagado h (m, mayor que %.2f): ", desprendimiento->altura);
+
+    while (1) {
+        if (!leerRealMayorQue("Aceleracion a2 (m/s^2, > 0): ", 0.0,
+                              &config->aceleracion2) ||
+            !leerRealMayorQue(mensajeAltura, desprendimiento->altura,
+                              &config->alturaApagado) ||
+            !leerRealRango("Intervalo de simulacion (s, entre 0.1 y 60): ",
+                           INTERVALO_MIN, INTERVALO_MAX, &config->intervalo)) {
+            return 0;
+        }
+        if (entraEnHistorial(config, desprendimiento, lugaresLibres)) {
+            return 1;
+        }
+        puts("Ingrese nuevamente los datos de la segunda fase.");
     }
 }
 
-/* Verifica que los datos permitan simular la fase 2.
- * Devuelve 1 si todo es válido; si no, informa cada error y devuelve 0. */
-int validar_config_fase2(const Configuracion *cfg, const Estado *desprendimiento)
+int validarSegundaFase(const Configuracion *config, const Estado *desprendimiento)
 {
     int valido = 1;
 
-    if (cfg == NULL || desprendimiento == NULL) {
-        printf("[!] Error interno: datos de la fase 2 inexistentes.\n");
+    if (config == NULL || desprendimiento == NULL) {
+        puts("Error interno: datos de la fase 2 inexistentes.");
         return 0;
     }
-    if (cfg->a2 <= 0.0) {
-        printf("[!] La aceleracion de la fase 2 debe ser positiva "
-               "(ingresada: %.2f m/s2).\n", cfg->a2);
+    if (config->aceleracion2 <= 0.0) {
+        printf("La aceleracion de la fase 2 debe ser positiva "
+               "(ingresada: %.2f m/s^2).\n", config->aceleracion2);
         valido = 0;
     }
-    if (cfg->h_apagado <= desprendimiento->altura) {
-        printf("[!] La altura de apagado (%.2f m) debe ser mayor que la "
-               "altura de desprendimiento de los SRB (%.2f m).\n",
-               cfg->h_apagado, desprendimiento->altura);
+    if (config->alturaApagado <= desprendimiento->altura) {
+        printf("La altura de apagado (%.2f m) debe ser mayor que la altura "
+               "de desprendimiento (%.2f m).\n",
+               config->alturaApagado, desprendimiento->altura);
         valido = 0;
     }
     if (desprendimiento->velocidad < 0.0) {
-        printf("[!] La velocidad al desprendimiento no puede ser negativa.\n");
+        puts("La velocidad al desprendimiento no puede ser negativa.");
         valido = 0;
     }
-    if (cfg->dt < DT_MIN || cfg->dt > DT_MAX) {
-        printf("[!] El intervalo de simulacion debe estar entre %.2f y %.2f s.\n",
-               DT_MIN, DT_MAX);
+    if (config->intervalo < INTERVALO_MIN || config->intervalo > INTERVALO_MAX) {
+        printf("El intervalo debe estar entre %.2f y %.2f s.\n",
+               INTERVALO_MIN, INTERVALO_MAX);
         valido = 0;
     }
     return valido;
 }
 
-/* Cálculo analítico de la fase 2. Supone datos ya validados. */
-void calcular_fase2(const Configuracion *cfg, const Estado *desprendimiento,
-                    ResultadoFase2 *res)
+void calcularSegundaFase(const Configuracion *config, const Estado *desprendimiento,
+                         ResultadoFase2 *res)
 {
     double v1 = desprendimiento->velocidad;
 
-    res->distancia_restante = cfg->h_apagado - desprendimiento->altura;
-    res->v_apagado = sqrt(v1 * v1 + 2.0 * cfg->a2 * res->distancia_restante);
-    res->duracion = (res->v_apagado - v1) / cfg->a2;
-    res->tiempo_total = desprendimiento->tiempo + res->duracion;
+    res->distanciaRestante = config->alturaApagado - desprendimiento->altura;
+    res->velocidadApagado = sqrt(v1 * v1
+                                 + 2.0 * config->aceleracion2 * res->distanciaRestante);
+    res->duracion = (res->velocidadApagado - v1) / config->aceleracion2;
+    res->tiempoTotal = desprendimiento->tiempo + res->duracion;
 }
 
-static void imprimir_fila(const Estado *e, const char *nota)
+static void imprimirFila(const Estado *e, const char *nota)
 {
-    printf("%10.2f | %14.2f | %12.2f | %-20s %s\n",
-           e->tiempo, e->altura, e->velocidad, nombre_fase(e->fase), nota);
+    printf("%10.2f | %14.2f | %12.2f | %-18s %s\n",
+           e->tiempo, e->altura, e->velocidad, "Propulsion nucleo", nota);
 }
 
-/* Simula la fase 2 avanzando de a cfg->dt segundos.
- *
- * Entrada:  *estado = estado de la nave al desprenderse los SRB (integrante 1)
- * Salida:   *estado = estado de la nave al apagar los motores (para el
- *                     integrante 3); *res = resultados analíticos de la fase.
- * hist puede ser NULL si no se quiere guardar historial.
- * Devuelve 1 si la simulación se realizó, 0 si los datos eran inválidos. */
-int simular_propulsion(const Configuracion *cfg, Estado *estado,
-                       Historial *hist, ResultadoFase2 *res)
+int simularPropulsion(const Configuracion *config, Estado *estado,
+                      Historial *hist, ResultadoFase2 *res)
 {
     Estado inicio;
     Estado actual;
-    double tau;            /* tiempo transcurrido desde el desprendimiento */
-    double tau_anterior = 0.0;
-    long   paso = 0;
-    int    ultimo = 0;
-    int    aviso_lleno = 0;
+    double tau;               /* tiempo desde el desprendimiento */
+    double tauAnterior = 0.0;
+    long paso = 0;
+    int ultimo = 0;
+    char nota[48];
 
-    if (estado == NULL || res == NULL || !validar_config_fase2(cfg, estado)) {
+    if (estado == NULL || res == NULL || hist == NULL ||
+        !validarSegundaFase(config, estado)) {
         return 0;
     }
 
-    inicio = *estado;                  /* copia: no perdemos los datos de partida */
-    calcular_fase2(cfg, &inicio, res);
+    inicio = *estado;         /* copia: no perdemos los datos de partida */
+    calcularSegundaFase(config, &inicio, res);
 
-    /* Control de límites: la cantidad de intervalos debe entrar en el
-     * historial (y evita imprimir millones de filas). */
-    if (ceil(res->duracion / cfg->dt - EPSILON) > MAX_ESTADOS) {
-        /* redondeado hacia arriba a 2 decimales para que alcance */
-        double dt_necesario = ceil(res->duracion / MAX_ESTADOS * 100.0) / 100.0;
-
-        printf("[!] Con un intervalo de %.2f s la fase 2 tendria %.0f pasos "
-               "(maximo %d).\n", cfg->dt, ceil(res->duracion / cfg->dt),
-               MAX_ESTADOS);
-        if (dt_necesario <= DT_MAX) {
-            printf("    Use un intervalo de al menos %.2f s.\n", dt_necesario);
-        } else {
-            printf("    La fase dura %.2f s: reduzca la altura de apagado o "
-                   "aumente la aceleracion.\n", res->duracion);
-        }
+    /* Control de limites: los intervalos deben entrar en el historial */
+    if (cantidadPasos(res->duracion, config->intervalo)
+        > MAX_ESTADOS - hist->cantidad) {
+        puts("No hay lugar en el historial para todos los intervalos de la fase 2.");
         return 0;
     }
 
-    printf("\n=== FASE 2: PROPULSION DEL NUCLEO (intervalo %.2f s) ===\n", cfg->dt);
-    printf("%10s | %14s | %12s | %-20s\n",
+    printf("\n=== FASE 2: PROPULSION DEL NUCLEO (intervalo %.2f s) ===\n",
+           config->intervalo);
+    printf("%10s | %14s | %12s | %-18s\n",
            "Tiempo [s]", "Altura [m]", "Vel. [m/s]", "Fase");
-    printf("-----------+----------------+--------------+---------------------\n");
+    puts("-----------+----------------+--------------+-------------------");
 
-    /* Fila inicial: el instante del desprendimiento (ya registrado por la fase 1) */
+    /* Fila inicial: el desprendimiento (ya registrado en la fase 1) */
     actual = inicio;
-    actual.fase = FASE_PROPULSION_NUCLEO;
-    imprimir_fila(&actual, "<- desprendimiento SRB");
+    actual.fase = FASE_NUCLEO;
+    imprimirFila(&actual, "<- desprendimiento SRB");
 
     while (!ultimo) {
         paso++;
-        /* tau = paso * dt en vez de sumar dt cada vuelta: evita acumular
-         * error de redondeo de los double. */
-        tau = paso * cfg->dt;
+        /* tau = paso * intervalo en vez de sumar el intervalo en cada vuelta:
+         * asi no se acumula el error de redondeo de los double. */
+        tau = paso * config->intervalo;
 
-        /* Ajuste del último intervalo: no pasarse de la altura de apagado */
+        /* Ajuste del ultimo intervalo: no pasarse de la altura de apagado */
         if (tau >= res->duracion - EPSILON) {
             tau = res->duracion;
             ultimo = 1;
@@ -152,42 +227,36 @@ int simular_propulsion(const Configuracion *cfg, Estado *estado,
         actual.tiempo = inicio.tiempo + tau;
         if (ultimo) {
             /* Valores exactos al apagado (sin error de redondeo) */
-            actual.altura = cfg->h_apagado;
-            actual.velocidad = res->v_apagado;
+            actual.altura = config->alturaApagado;
+            actual.velocidad = res->velocidadApagado;
         } else {
             actual.altura = inicio.altura + inicio.velocidad * tau
-                            + 0.5 * cfg->a2 * tau * tau;
-            actual.velocidad = inicio.velocidad + cfg->a2 * tau;
+                            + 0.5 * config->aceleracion2 * tau * tau;
+            actual.velocidad = inicio.velocidad + config->aceleracion2 * tau;
         }
-        actual.fase = FASE_PROPULSION_NUCLEO;
 
-        if (ultimo && (tau - tau_anterior) < cfg->dt - EPSILON) {
-            char nota[48];
-            snprintf(nota, sizeof(nota), "<- APAGADO (ultimo dt = %.2f s)",
-                     tau - tau_anterior);
-            imprimir_fila(&actual, nota);
+        if (ultimo && (tau - tauAnterior) < config->intervalo - EPSILON) {
+            snprintf(nota, sizeof nota, "<- APAGADO (ultimo dt = %.2f s)",
+                     tau - tauAnterior);
+            imprimirFila(&actual, nota);
         } else {
-            imprimir_fila(&actual, ultimo ? "<- APAGADO" : "");
+            imprimirFila(&actual, ultimo ? "<- APAGADO" : "");
         }
 
-        if (hist != NULL && !historial_agregar(hist, &actual) && !aviso_lleno) {
-            printf("[!] Historial lleno (%d estados): los siguientes intervalos "
-                   "se muestran pero no se guardan.\n", MAX_ESTADOS);
-            aviso_lleno = 1;
-        }
-        tau_anterior = tau;
+        agregarEstado(hist, actual);  /* hay lugar: se verifico antes */
+        tauAnterior = tau;
     }
 
-    *estado = actual;                  /* se entrega el estado de apagado */
+    *estado = actual;         /* se entrega el estado de apagado (fase 3) */
     return 1;
 }
 
-void mostrar_resultados_fase2(const ResultadoFase2 *res)
+void mostrarResultadosFase2(const ResultadoFase2 *res)
 {
-    printf("\n--- Resultados de la fase 2 ---\n");
-    printf("Distancia recorrida hasta el apagado : %12.2f m\n", res->distancia_restante);
-    printf("Velocidad al apagar los motores (v2) : %12.2f m/s (%.2f km/h)\n",
-           res->v_apagado, res->v_apagado * 3.6);
-    printf("Duracion de la fase 2                : %12.2f s\n", res->duracion);
-    printf("Tiempo total de vuelo propulsado     : %12.2f s\n", res->tiempo_total);
+    puts("\n--- RESULTADOS DE LA SEGUNDA FASE ---");
+    printf("Distancia recorrida hasta el apagado: %12.2f m\n", res->distanciaRestante);
+    printf("Velocidad al apagar los motores (v2): %12.2f m/s (%.2f km/h)\n",
+           res->velocidadApagado, res->velocidadApagado * 3.6);
+    printf("Duracion de la segunda fase:          %12.2f s\n", res->duracion);
+    printf("Tiempo total de vuelo propulsado:     %12.2f s\n", res->tiempoTotal);
 }
