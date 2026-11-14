@@ -23,13 +23,20 @@
 
 const char *nombre_fase(Fase fase)
 {
-    switch (fase) {
-        case FASE_PLATAFORMA:        return "En plataforma";
-        case FASE_ASCENSO_SRB:       return "Ascenso con SRB";
-        case FASE_PROPULSION_NUCLEO: return "Propulsion nucleo";
-        case FASE_VUELO_LIBRE:       return "Vuelo sin propulsion";
-        case FASE_ALTURA_MAXIMA:     return "Altura maxima";
-        default:                     return "Desconocida";
+    switch (fase)
+    {
+    case FASE_PLATAFORMA:
+        return "En plataforma";
+    case FASE_ASCENSO_SRB:
+        return "Ascenso con SRB";
+    case FASE_PROPULSION_NUCLEO:
+        return "Propulsion nucleo";
+    case FASE_VUELO_LIBRE:
+        return "Vuelo sin propulsion";
+    case FASE_ALTURA_MAXIMA:
+        return "Altura maxima";
+    default:
+        return "Desconocida";
     }
 }
 
@@ -39,26 +46,32 @@ int validar_config_fase2(const Configuracion *cfg, const Estado *desprendimiento
 {
     int valido = 1;
 
-    if (cfg == NULL || desprendimiento == NULL) {
+    if (cfg == NULL || desprendimiento == NULL)
+    {
         printf("[!] Error interno: datos de la fase 2 inexistentes.\n");
         return 0;
     }
-    if (cfg->a2 <= 0.0) {
+    if (cfg->a2 <= 0.0)
+    {
         printf("[!] La aceleracion de la fase 2 debe ser positiva "
-               "(ingresada: %.2f m/s2).\n", cfg->a2);
+               "(ingresada: %.2f m/s2).\n",
+               cfg->a2);
         valido = 0;
     }
-    if (cfg->h_apagado <= desprendimiento->altura) {
+    if (cfg->h_apagado <= desprendimiento->altura)
+    {
         printf("[!] La altura de apagado (%.2f m) debe ser mayor que la "
                "altura de desprendimiento de los SRB (%.2f m).\n",
                cfg->h_apagado, desprendimiento->altura);
         valido = 0;
     }
-    if (desprendimiento->velocidad < 0.0) {
+    if (desprendimiento->velocidad < 0.0)
+    {
         printf("[!] La velocidad al desprendimiento no puede ser negativa.\n");
         valido = 0;
     }
-    if (cfg->dt < DT_MIN || cfg->dt > DT_MAX) {
+    if (cfg->dt < DT_MIN || cfg->dt > DT_MAX)
+    {
         printf("[!] El intervalo de simulacion debe estar entre %.2f y %.2f s.\n",
                DT_MIN, DT_MAX);
         valido = 0;
@@ -96,33 +109,40 @@ int simular_propulsion(const Configuracion *cfg, Estado *estado,
 {
     Estado inicio;
     Estado actual;
-    double tau;            /* tiempo transcurrido desde el desprendimiento */
+    double tau; /* tiempo transcurrido desde el desprendimiento */
     double tau_anterior = 0.0;
-    long   paso = 0;
-    int    ultimo = 0;
-    int    aviso_lleno = 0;
+    long paso = 0;
+    int ultimo = 0;
+    int aviso_lleno = 0;
 
-    if (estado == NULL || res == NULL || !validar_config_fase2(cfg, estado)) {
+    if (estado == NULL || res == NULL || !validar_config_fase2(cfg, estado))
+    {
         return 0;
     }
 
-    inicio = *estado;                  /* copia: no perdemos los datos de partida */
+    inicio = *estado; /* copia: no perdemos los datos de partida */
     calcular_fase2(cfg, &inicio, res);
 
     /* Control de límites: la cantidad de intervalos debe entrar en el
      * historial (y evita imprimir millones de filas). */
-    if (ceil(res->duracion / cfg->dt - EPSILON) > MAX_ESTADOS) {
+    if (ceil(res->duracion / cfg->dt - EPSILON) > MAX_ESTADOS)
+    {
         /* redondeado hacia arriba a 2 decimales para que alcance */
         double dt_necesario = ceil(res->duracion / MAX_ESTADOS * 100.0) / 100.0;
 
         printf("[!] Con un intervalo de %.2f s la fase 2 tendria %.0f pasos "
-               "(maximo %d).\n", cfg->dt, ceil(res->duracion / cfg->dt),
+               "(maximo %d).\n",
+               cfg->dt, ceil(res->duracion / cfg->dt),
                MAX_ESTADOS);
-        if (dt_necesario <= DT_MAX) {
+        if (dt_necesario <= DT_MAX)
+        {
             printf("    Use un intervalo de al menos %.2f s.\n", dt_necesario);
-        } else {
+        }
+        else
+        {
             printf("    La fase dura %.2f s: reduzca la altura de apagado o "
-                   "aumente la aceleracion.\n", res->duracion);
+                   "aumente la aceleracion.\n",
+                   res->duracion);
         }
         return 0;
     }
@@ -137,48 +157,57 @@ int simular_propulsion(const Configuracion *cfg, Estado *estado,
     actual.fase = FASE_PROPULSION_NUCLEO;
     imprimir_fila(&actual, "<- desprendimiento SRB");
 
-    while (!ultimo) {
+    while (!ultimo)
+    {
         paso++;
         /* tau = paso * dt en vez de sumar dt cada vuelta: evita acumular
          * error de redondeo de los double. */
         tau = paso * cfg->dt;
 
         /* Ajuste del último intervalo: no pasarse de la altura de apagado */
-        if (tau >= res->duracion - EPSILON) {
+        if (tau >= res->duracion - EPSILON)
+        {
             tau = res->duracion;
             ultimo = 1;
         }
 
         actual.tiempo = inicio.tiempo + tau;
-        if (ultimo) {
+        if (ultimo)
+        {
             /* Valores exactos al apagado (sin error de redondeo) */
             actual.altura = cfg->h_apagado;
             actual.velocidad = res->v_apagado;
-        } else {
-            actual.altura = inicio.altura + inicio.velocidad * tau
-                            + 0.5 * cfg->a2 * tau * tau;
+        }
+        else
+        {
+            actual.altura = inicio.altura + inicio.velocidad * tau + 0.5 * cfg->a2 * tau * tau;
             actual.velocidad = inicio.velocidad + cfg->a2 * tau;
         }
         actual.fase = FASE_PROPULSION_NUCLEO;
 
-        if (ultimo && (tau - tau_anterior) < cfg->dt - EPSILON) {
+        if (ultimo && (tau - tau_anterior) < cfg->dt - EPSILON)
+        {
             char nota[48];
             snprintf(nota, sizeof(nota), "<- APAGADO (ultimo dt = %.2f s)",
                      tau - tau_anterior);
             imprimir_fila(&actual, nota);
-        } else {
+        }
+        else
+        {
             imprimir_fila(&actual, ultimo ? "<- APAGADO" : "");
         }
 
-        if (hist != NULL && !historial_agregar(hist, &actual) && !aviso_lleno) {
+        if (hist != NULL && !historial_agregar(hist, &actual) && !aviso_lleno)
+        {
             printf("[!] Historial lleno (%d estados): los siguientes intervalos "
-                   "se muestran pero no se guardan.\n", MAX_ESTADOS);
+                   "se muestran pero no se guardan.\n",
+                   MAX_ESTADOS);
             aviso_lleno = 1;
         }
         tau_anterior = tau;
     }
 
-    *estado = actual;                  /* se entrega el estado de apagado */
+    *estado = actual; /* se entrega el estado de apagado */
     return 1;
 }
 
