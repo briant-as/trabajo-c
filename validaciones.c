@@ -1,15 +1,4 @@
-/*
- * validaciones.c
- * Ingreso seguro de datos por consola.
- *
- * - leerEntero: integrante 1.
- * - leerReal, leerRealMayorQue, leerRealRango: integrante 2.
- *
- * No se usa scanf: si el usuario escribe una letra, scanf la deja en el
- * buffer y el programa entra en un bucle infinito. En su lugar se lee la
- * linea completa con fgets y se convierte con strtol / strtod, revisando
- * que no sobren caracteres.
- */
+
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -21,9 +10,7 @@
 
 #define TAM_LINEA 128
 
-/* Muestra el mensaje y lee una linea completa en 'linea'.
- * Si la linea no entra en el buffer, descarta el resto y vuelve a pedir.
- * Devuelve 1 si leyo una linea, 0 si se llego al fin de entrada. */
+
 static int leerLinea(const char *mensaje, char *linea, int tam)
 {
     int caracter;
@@ -36,7 +23,7 @@ static int leerLinea(const char *mensaje, char *linea, int tam)
             return 0;
         }
         if (strchr(linea, '\n') == NULL && !feof(stdin)) {
-            /* Descartar el resto evita que afecte la proxima lectura. */
+           
             while ((caracter = getchar()) != '\n' && caracter != EOF) {
             }
             puts("Entrada demasiado larga. Intente nuevamente.");
@@ -46,7 +33,7 @@ static int leerLinea(const char *mensaje, char *linea, int tam)
     }
 }
 
-/* Saltea los espacios finales; devuelve 1 si no sobra ningun caracter. */
+
 static int soloEspaciosAlFinal(const char *fin)
 {
     while (isspace((unsigned char)*fin)) {
@@ -55,7 +42,7 @@ static int soloEspaciosAlFinal(const char *fin)
     return *fin == '\0';
 }
 
-/* ======================= Integrante 1 ======================= */
+
 
 int leerEntero(const char *mensaje, int minimo, int maximo, int *valor)
 {
@@ -67,7 +54,7 @@ int leerEntero(const char *mensaje, int minimo, int maximo, int *valor)
         errno = 0;
         numero = strtol(linea, &fin, 10);
 
-        /* Se permiten espacios finales, pero no texto ni decimales. */
+        
         if (fin == linea || errno == ERANGE || !soloEspaciosAlFinal(fin) ||
             numero < INT_MIN || numero > INT_MAX) {
             puts("Entrada invalida: escriba un numero entero.");
@@ -84,7 +71,7 @@ int leerEntero(const char *mensaje, int minimo, int maximo, int *valor)
     return 0;
 }
 
-/* ======================= Integrante 2 ======================= */
+
 
 int leerReal(const char *mensaje, double *valor)
 {
@@ -94,7 +81,7 @@ int leerReal(const char *mensaje, double *valor)
     int i;
 
     while (leerLinea(mensaje, linea, sizeof linea)) {
-        /* Se acepta coma decimal: "12,5" se interpreta como 12.5 */
+        
         for (i = 0; linea[i] != '\0'; i++) {
             if (linea[i] == ',') {
                 linea[i] = '.';
@@ -104,7 +91,7 @@ int leerReal(const char *mensaje, double *valor)
         errno = 0;
         numero = strtod(linea, &fin);
 
-        /* Rechaza: texto vacio, "12abc", fuera de rango, inf y nan */
+        
         if (fin == linea || errno == ERANGE || !soloEspaciosAlFinal(fin) ||
             !isfinite(numero)) {
             puts("Entrada invalida: escriba un numero real "
