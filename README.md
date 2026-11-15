@@ -179,7 +179,7 @@ No se utilizan archivos externos de datos para ejecutar la misión. Los resultad
 
 ## 🤖 Registro del uso de Inteligencia Artificial
 
-Registro de uso de IA (integrante 1)
+Registro de uso de IA (integrante 1) - Aramayo Mariano
 Herramienta: ChatGPT (OpenAI).
 
 Para qué la usé:
@@ -194,7 +194,7 @@ consultas realizadas:
 3. Teniendo en cuenta los requisitos de la primera fase del ascenso, ¿podrías ayudarme a desarrollar una primera versión del archivo ascenso.c?
 
 
-Registro de uso de IA (integrante 2)
+Registro de uso de IA (integrante 2) - briant lopez
 Herramienta: Claude (Anthropic).
 
 Para qué la usé:
@@ -212,6 +212,31 @@ Cómo validé y adapté el código:
 - Ejecuté el programa de prueba con todas las entradas de la tabla de pruebas.
 - [Completar: qué cambié del código generado, por ejemplo nombres de campos o prototipos acordados con el grupo.]
 Revisé y comprendí cada función, en especial el uso de fgets + strtod, el ajuste del último intervalo y el paso de parámetros por punteros.
+
+
+Registro de uso de IA (integrante 3) - Marcos Marquez 
+
+Herramienta: Claude (Anthropic).
+
+Para qué la usé:
+
+- Obtener un resumen de la consigna y preparar el entorno (GCC, make, VS Code, Git).
+- Comprender conceptos de C: estructuras, punteros, arreglos con control de límite y archivos .c y .h.
+- Generar una primera versión de reportes.c, de simularVueloLibre y del Makefile. alturaMaxima, tiempoSubida y los printf 
+- Revisar la compatibilidad de mi código con el de Mariano y aprender a subir mis archivos a GitHub.
+
+Consultas realizadas:
+
+1. "Lee todo y haceme un resumen, me toca el escenario 1." (adjuntando la consigna)
+2. "¿Cómo escribo esas fórmulas en C?"
+3. "¿Cómo subo los códigos a GitHub?"
+
+Cómo validé:
+
+- Probé mi módulo con los valores del enunciado: la altitud máxima da 474.285,71 m, igual al valor esperado.
+- Probé el historial con datos de ejemplo y con el límite de 1000 estados.
+- Leí el código línea por línea y compilé con -Wall -Wextra sin avisos.
+
 
 
 uso de IA general:
